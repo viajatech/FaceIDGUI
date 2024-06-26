@@ -1,0 +1,198 @@
+#Estilo verde menta
+#David Ruiz
+#@viajatech
+
+
+import tkinter as tk
+from tkinter import ttk, messagebox
+import cv2
+import os
+import numpy as np
+import pickle
+from sklearn.metrics.pairwise import cosine_similarity
+from PIL import Image, ImageTk
+
+class FacialRecognitionApp:
+    def __init__(self, master):
+        self.master = master
+        master.title("Sistema de Autenticación by Viaja Tech")
+        master.geometry("400x300")
+        master.configure(bg='#1e1e2e')
+
+        # Apply custom styles
+        style = ttk.Style()
+        style.theme_use('clam')
+        style.configure('TFrame', background='#000000')  # Black background
+        style.configure('TLabel', background='#000000', foreground='#00ffaa')  # Mint colored text
+        style.configure('TEntry', fieldbackground='#313244', foreground='#00ffaa')
+        style.configure('TButton', background='#00ffaa', foreground='#000000')  # Mint button with black text
+
+        # Create main frame with vivid border colors
+        self.frame = tk.Frame(master, bg='#000000', highlightbackground='#00ffaa', highlightcolor='#00ffaa', highlightthickness=5)
+        self.frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        self.welcome_label = ttk.Label(self.frame, text="Bienvenido al Sistema Viaja Tech Security", font=("Helvetica", 14))
+        self.welcome_label.pack(pady=20)
+
+        self.login_button = ttk.Button(self.frame, text="Iniciar Sesión", command=self.open_login_window)
+        self.login_button.pack(pady=10)
+
+        self.register_button = ttk.Button(self.frame, text="Registrarse", command=self.open_register_window)
+        self.register_button.pack(pady=10)
+
+    def open_login_window(self):
+        login_window = tk.Toplevel(self.master)
+        login_window.title("Iniciar Sesión")
+        login_window.geometry("400x300")
+        login_window.configure(bg='#000000')  # Black background
+
+        self.login_frame = tk.Frame(login_window, bg='#000000', highlightbackground='#00ffaa', highlightcolor='#00ffaa', highlightthickness=5)
+        self.login_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        self.login_username_label = ttk.Label(self.login_frame, text="Nombre de Usuario:")
+        self.login_username_label.pack(pady=10)
+
+        self.login_username_entry = ttk.Entry(self.login_frame, width=30)
+        self.login_username_entry.pack(pady=5)
+
+        self.login_verify_button = ttk.Button(self.login_frame, text="Verificar", command=lambda: self.login(login_window))
+        self.login_verify_button.pack(pady=20)
+
+    def open_register_window(self):
+        register_window = tk.Toplevel(self.master)
+        register_window.title("Registrarse")
+        register_window.geometry("400x300")
+        register_window.configure(bg='#000000')  # Black background
+
+        self.register_frame = tk.Frame(register_window, bg='#000000', highlightbackground='#00ffaa', highlightcolor='#00ffaa', highlightthickness=5)
+        self.register_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        self.register_username_label = ttk.Label(self.register_frame, text="Nombre de Usuario:")
+        self.register_username_label.pack(pady=10)
+
+        self.register_username_entry = ttk.Entry(self.register_frame, width=30)
+        self.register_username_entry.pack(pady=5)
+
+        self.register_capture_button = ttk.Button(self.register_frame, text="Capturar y Registrar", command=lambda: self.register(register_window))
+        self.register_capture_button.pack(pady=20)
+
+    def login(self, window):
+        username = self.login_username_entry.get()
+        if not username:
+            messagebox.showerror("Error", "Por favor, ingrese un nombre de usuario.")
+            return
+
+        if not os.path.exists(f'faces/{username}.pkl'):
+            messagebox.showerror("Error", "Usuario no registrado. Por favor, regístrese primero.")
+            return
+
+        if self.verify_face(username):
+            messagebox.showinfo("Éxito", f"Bienvenido, {username}!")
+        else:
+            messagebox.showerror("Error", "Verificación facial fallida. Acceso denegado.")
+
+    def register(self, window):
+        username = self.register_username_entry.get()
+        if not username:
+            messagebox.showerror("Error", "Por favor, ingrese un nombre de usuario.")
+            return
+
+        if os.path.exists(f'faces/{username}.pkl'):
+            messagebox.showerror("Error", "Este usuario ya está registrado.")
+            return
+
+        if self.capture_and_save_face(username):
+            messagebox.showinfo("Éxito", f"Usuario {username} registrado correctamente.")
+        else:
+            messagebox.showerror("Error", "No se pudo completar el registro. Por favor, inténtelo de nuevo.")
+
+    def capture_and_save_face(self, username):
+        cap = cv2.VideoCapture(0)
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+        countdown = 5
+        start_time = cv2.getTickCount()
+
+        while (cv2.getTickCount() - start_time) / cv2.getTickFrequency() < 10:
+            ret, frame = cap.read()
+            if not ret:
+                continue
+
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+
+            for (x, y, w, h) in faces:
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
+
+            remaining_time = max(0, 5 - int((cv2.getTickCount() - start_time) / cv2.getTickFrequency()))
+            cv2.putText(frame, f"Capturando en: {remaining_time}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+            cv2.imshow('Registro Facial', frame)
+            cv2.waitKey(1)
+
+            if (cv2.getTickCount() - start_time) / cv2.getTickFrequency() > 5 and len(faces) > 0:
+                face = gray[y:y+h, x:x+w]
+                face_resized = cv2.resize(face, (100, 100))
+
+                if not os.path.exists('faces'):
+                    os.makedirs('faces')
+
+                cv2.imwrite(f'faces/{username}.jpg', face_resized)
+
+                face_encoding = face_resized.flatten().astype(np.float64)
+                face_encoding /= np.linalg.norm(face_encoding)
+
+                with open(f'faces/{username}.pkl', 'wb') as f:
+                    pickle.dump(face_encoding, f)
+
+                cap.release()
+                cv2.destroyAllWindows()
+                return True
+
+        cap.release()
+        cv2.destroyAllWindows()
+        return False
+
+    def verify_face(self, username):
+        with open(f'faces/{username}.pkl', 'rb') as f:
+            saved_encoding = pickle.load(f)
+
+        cap = cv2.VideoCapture(0)
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+        start_time = cv2.getTickCount()
+
+        while (cv2.getTickCount() - start_time) / cv2.getTickFrequency() < 5:
+            ret, frame = cap.read()
+            if not ret:
+                continue
+
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+
+            for (x, y, w, h) in faces:
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
+
+                face = gray[y:y+h, x:x+w]
+                face_resized = cv2.resize(face, (100, 100))
+                face_encoding = face_resized.flatten().astype(np.float64)
+                face_encoding /= np.linalg.norm(face_encoding)
+
+                similarity = cosine_similarity(saved_encoding.reshape(1, -1), face_encoding.reshape(1, -1))[0][0]
+
+                if similarity > 0.8:
+                    cap.release()
+                    cv2.destroyAllWindows()
+                    return True
+
+            cv2.imshow('Verificación Facial', frame)
+            cv2.waitKey(1)
+
+        cap.release()
+        cv2.destroyAllWindows()
+        return False
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = FacialRecognitionApp(root)
+    root.mainloop()
